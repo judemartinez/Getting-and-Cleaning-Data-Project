@@ -9,95 +9,72 @@
 #   5. From the data set in #4, creates a second, independent tidy data set with the average of 
 #      each variable for each activity and each subject. 
 
-###### 1. Merges the training and the test sets to create one data set. #####
+library(plyr)
 
-# Read in the data from files
-activityType <- read.table('./activity_labels.txt',header=FALSE); 
-features <- read.table('./features.txt',header=FALSE); 
+# Step 1
+# Merge the training and test sets to create one data set
+###############################################################################
 
-# Read training files
-subjectTrain <- read.table('./train/subject_train.txt',header=FALSE); 
-xTrain <- read.table('./train/X_train.txt',header=FALSE); 
-yTrain <- read.table('./train/y_train.txt',header=FALSE); 
+x_train <- read.table("train/X_train.txt")
+y_train <- read.table("train/y_train.txt")
+subject_train <- read.table("train/subject_train.txt")
 
-# Assign descriptive column names 
-colnames(activityType) <- c('activityId','activityType');
-colnames(subjectTrain) <- "subjectId";
-colnames(xTrain) <- features[,2]; 
-colnames(yTrain) <- "activityId";
+x_test <- read.table("test/X_test.txt")
+y_test <- read.table("test/y_test.txt")
+subject_test <- read.table("test/subject_test.txt")
 
-# merging subjectTrain, xTrain and yTrain
-trainingData <- cbind(subjectTrain,xTrain,yTrain);
+# create 'x' data set
+x_data <- rbind(x_train, x_test)
 
-# Read test files
-subjectTest <- read.table('./test/subject_test.txt',header=FALSE); 
-xTest <- read.table('./test/X_test.txt',header=FALSE); 
-yTest <- read.table('./test/y_test.txt',header=FALSE); 
+# create 'y' data set
+y_data <- rbind(y_train, y_test)
 
-# Assign descriptive column names
-colnames(subjectTest) <- "subjectId";
-colnames(xTest) <- features[,2]; 
-colnames(yTest) <- "activityId";
+# create 'subject' data set
+subject_data <- rbind(subject_train, subject_test)
 
+# Step 2
+# Extract only the measurements on the mean and standard deviation for each measurement
+###############################################################################
 
-# merging subjectTest,xTest and yTest 
-testData <- cbind(subjectTest,xTest,yTest);
+features <- read.table("features.txt")
 
-# merging training and test data to create ONE data set
-finalData <- rbind(trainingData,testData);
+# get only columns with mean() or std() in their names
+mean_and_std_features <- grep("-(mean|std)\\(\\)", features[, 2])
 
-# Create a vector for the column names from the finalData, which will be used
-# to select the desired mean() & stddev() columns
-colNames <- colnames(finalData); 
+# subset the desired columns
+x_data <- x_data[, mean_and_std_features]
 
-##### 2. Extract only the measurements on the mean and standard deviation for each measurement. #####
+# correct the column names
+names(x_data) <- features[mean_and_std_features, 2]
 
-# Create a logicalVector that contains TRUE values for the ID, mean() & stddev() columns and FALSE for others
-logicalVector <- (grepl("activity..",colNames) | grepl("subject..",colNames) | grepl("-mean..",colNames) & !grepl("-meanFreq..",colNames) & !grepl("mean..-",colNames) | grepl("-std..",colNames) & !grepl("-std()..-",colNames));
+# Step 3
+# Use descriptive activity names to name the activities in the data set
+###############################################################################
 
-# Subset finalData table based on the logicalVector to keep only desired columns
-finalData <- finalData[logicalVector==TRUE];
+activities <- read.table("activity_labels.txt")
 
-##### 3. Use descriptive activity names to name the activities in the data set #####
+# update values with correct activity names
+y_data[, 1] <- activities[y_data[, 1], 2]
 
-# Merge the finalData set with the acitivityType table to include descriptive activity names
-finalData <- merge(finalData,activityType,by='activityId',all.x=TRUE);
+# correct column name
+names(y_data) <- "activity"
 
-# Updating the colNames vector to include the new column names after merge
-colNames <- colnames(finalData); 
+# Step 4
+# Appropriately label the data set with descriptive variable names
+###############################################################################
 
-##### 4. Appropriately label the data set with descriptive activity names. #####
+# correct column name
+names(subject_data) <- "subject"
 
-for (i in 1:length(colNames)) 
-{
-  colNames[i] <- gsub("\\()","",colNames[i])
-  colNames[i] <- gsub("-std$","StdDev",colNames[i])
-  colNames[i] <- gsub("-mean","Mean",colNames[i])
-  colNames[i] <- gsub("^(t)","time",colNames[i])
-  colNames[i] <- gsub("^(f)","freq",colNames[i])
-  colNames[i] <- gsub("([Gg]ravity)","Gravity",colNames[i])
-  colNames[i] <- gsub("([Bb]ody[Bb]ody|[Bb]ody)","Body",colNames[i])
-  colNames[i] <- gsub("[Gg]yro","Gyro",colNames[i])
-  colNames[i] <- gsub("AccMag","AccMagnitude",colNames[i])
-  colNames[i] <- gsub("([Bb]odyaccjerkmag)","BodyAccJerkMagnitude",colNames[i])
-  colNames[i] <- gsub("JerkMag","JerkMagnitude",colNames[i])
-  colNames[i] <- gsub("GyroMag","GyroMagnitude",colNames[i])
-};
+# bind all the data in a single data set
+all_data <- cbind(x_data, y_data, subject_data)
 
-# Reassigning the new descriptive column names to the finalData set
-colnames(finalData) <- colNames;
+# Step 5
+# Create a second, independent tidy data set with the average of each variable
+# for each activity and each subject
+###############################################################################
 
-##### 5. Create a second, independent tidy data set with the          #####
-#####    average of each variable for each activity and each subject. #####
+# 66 <- 68 columns but last two (activity & subject)
+averages_data <- ddply(all_data, .(subject, activity), function(x) colMeans(x[, 1:66]))
 
-# Create a new table, finalDataNoActivityType without the activityType column
-finalDataNoActivityType <- finalData[,names(finalData) != 'activityType'];
-
-# Summarizing the finalDataNoActivityType table to include just the mean of each variable for each activity and each subject
-tidyData <- aggregate(finalDataNoActivityType[,names(finalDataNoActivityType) != c('activityId','subjectId')],by=list(activityId=finalDataNoActivityType$activityId,subjectId = finalDataNoActivityType$subjectId),mean);
-
-# Merging the tidyData with activityType to include descriptive acitvity names
-tidyData <- merge(tidyData,activityType,by='activityId',all.x=TRUE);
-
-# Export the tidyData set 
-write.table(tidyData, './tidyData.txt',row.names=FALSE,sep='\t');
+write.table(averages_data, "tinydata.txt", row.name=FALSE)
